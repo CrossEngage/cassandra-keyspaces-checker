@@ -24,8 +24,8 @@ var (
 	jolokiaBaseURL = app.Flag("jolokia", "The base URL of the jolokia agent running on Cassandra JVM").Default("http://localhost:1778/jolokia").URL()
 	debug          = app.Flag("debug", "If set, enables debug logs").Default("false").Bool()
 	stderr         = app.Flag("stderr", "If set, enables logging to stderr instead of syslog").Default("false").Bool()
-	// skipZeros      = app.Flag("skip-zeros", "If set, it will not output metrics that only has zeros").Default("false").Bool()
-	skipMetrics = app.Flag("skip", "CSV with metric names to skip collection").Default(
+	skipZeros      = app.Flag("skip-zeros", "If set, it will not output metrics that only has zeros").Default("false").Bool()
+	skipMetrics    = app.Flag("skip", "CSV with metric names to skip collection").Default(
 		"CasCommitLatency",
 		"CasCommitTotalLatency",
 		"CasPrepareLatency",
@@ -98,13 +98,13 @@ func main() {
 	commonKey := strings.Join(keys, ",")
 
 	for keyPath, valueMap := range jsonResp.Value {
+		keyPath = strings.Replace(keyPath, "org.apache.cassandra.metrics:", "", 1)
 		if skipMetric(keyPath) {
 			continue
 		}
 
-		tags := []string{}
-		keyPath = strings.Replace(keyPath, "org.apache.cassandra.metrics:", "", 1)
 		keyParts := strings.Split(keyPath, ",")
+		tags := []string{}
 		for _, part := range keyParts {
 			kv := strings.Split(part, "=")
 			switch kv[0] {
@@ -118,6 +118,8 @@ func main() {
 		}
 
 		values := []string{}
+		zeroValuesCount := 0
+		numericValues := 0
 		for valueKey, value := range valueMap {
 			if value == nil {
 				continue
@@ -129,11 +131,27 @@ func main() {
 			switch v := value.(type) {
 			case int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
 				values = append(values, fmt.Sprintf(`%s=%di`, valueKey, v))
+				numericValues++
+				if v == 0 {
+					zeroValuesCount++
+				}
+			case float32, float64, complex64, complex128:
+				values = append(values, fmt.Sprintf(`%s=%f`, valueKey, v))
+				numericValues++
+				if v == 0.0 {
+					zeroValuesCount++
+				}
 			case string:
 				values = append(values, fmt.Sprintf(`%s="%s"`, valueKey, v))
-			default:
-				values = append(values, fmt.Sprintf(`%s=%v`, valueKey, v))
 			}
+		}
+
+		if *skipZeros && (zeroValuesCount == numericValues) {
+			if *debug {
+				log.Printf("Skipping `%s` because it has %d zero values of %d numeric values",
+					keyPath, zeroValuesCount, numericValues)
+			}
+			continue
 		}
 
 		if len(values) > 0 {
@@ -161,7 +179,13 @@ type jsonResp struct {
 
 func skipMetric(keyPath string) bool {
 	for _, metricToSkip := range *skipMetrics {
-		return strings.Contains(keyPath, ",name="+metricToSkip+",")
+		part := ",name=" + metricToSkip + ","
+		if strings.Contains(keyPath, part) {
+			if *debug {
+				log.Printf("Skipping `%s` because it matches `%s`", keyPath, part)
+			}
+			return true
+		}
 	}
 	return false
 }
