@@ -14,3 +14,4 @@ cassandra-keyspaces-checker
 *.test
 *.out
 *.log
+*.json

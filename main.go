@@ -24,6 +24,22 @@ var (
 	jolokiaBaseURL = app.Flag("jolokia", "The base URL of the jolokia agent running on Cassandra JVM").Default("http://localhost:1778/jolokia").URL()
 	debug          = app.Flag("debug", "If set, enables debug logs").Default("false").Bool()
 	stderr         = app.Flag("stderr", "If set, enables logging to stderr instead of syslog").Default("false").Bool()
+	// skipZeros      = app.Flag("skip-zeros", "If set, it will not output metrics that only has zeros").Default("false").Bool()
+	skipMetrics = app.Flag("skip", "CSV with metric names to skip collection").Default(
+		"CasCommitLatency",
+		"CasCommitTotalLatency",
+		"CasPrepareLatency",
+		"CasPrepareTotalLatency",
+		"CasProposeLatency",
+		"CasProposeTotalLatency",
+		"ColUpdateTimeDeltaHistogram",
+		"CompressionMetadataOffHeapMemoryUsed",
+		"CompressionRatio",
+		"RowCacheHit",
+		"RowCacheHitOutOfRange",
+		"RowCacheMiss",
+		"SpeculativeRetries",
+	).Strings()
 )
 
 func main() {
@@ -82,6 +98,10 @@ func main() {
 	commonKey := strings.Join(keys, ",")
 
 	for keyPath, valueMap := range jsonResp.Value {
+		if skipMetric(keyPath) {
+			continue
+		}
+
 		tags := []string{}
 		keyPath = strings.Replace(keyPath, "org.apache.cassandra.metrics:", "", 1)
 		keyParts := strings.Split(keyPath, ",")
@@ -137,4 +157,11 @@ type jsonResp struct {
 	StackTrace string                            `json:"stacktrace"`
 	TimeStamp  int64                             `json:"timestamp"`
 	Value      map[string]map[string]interface{} `json:"value"`
+}
+
+func skipMetric(keyPath string) bool {
+	for _, metricToSkip := range *skipMetrics {
+		return strings.Contains(keyPath, ",name="+metricToSkip+",")
+	}
+	return false
 }
