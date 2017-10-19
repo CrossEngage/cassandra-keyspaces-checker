@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 
@@ -101,9 +102,11 @@ func main() {
 			if value == nil {
 				continue
 			}
-			switch v := value.(type) {
-			case []int64, []int32, []int16, []int8, []int, []uint64, []uint32, []uint16, []uint8, []uint:
+			rt := reflect.TypeOf(value)
+			if rt.Kind() == reflect.Slice {
 				continue
+			}
+			switch v := value.(type) {
 			case int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
 				values = append(values, fmt.Sprintf(`%s=%di`, valueKey, v))
 			case string:
