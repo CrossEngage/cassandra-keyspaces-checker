@@ -1,0 +1,16 @@
+g_*.go
+/dist/
+
+# Binaries for programs and plugins
+cassandra-keyspaces-checker
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Temp files
+*.tmp
+*.swp
+*.test
+*.out
+*.log
